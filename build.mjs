@@ -3,10 +3,26 @@
 //   node build.mjs          → web/dist（可直接 http 服务打开）
 // 产出：app.js(ESM, mermaid 外置) + katex css/fonts + 样式 + 示例
 // ============================================================
-import { build } from 'esbuild';
 import { cpSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// 依赖以动态导入引入：缺失时给出带指引的提示，而不是裸堆栈
+let build;
+try {
+  ({ build } = await import('esbuild'));
+} catch {
+  console.error([
+    '✗ 依赖尚未安装：找不到 esbuild。',
+    '',
+    '  原因：node_modules/ 不入 Git（.gitignore），克隆后需先安装依赖：',
+    '',
+    '    npm install',
+    '',
+    '  （首次约 1–2 分钟；完成后再执行 npm run build:web）',
+  ].join('\n'));
+  process.exit(1);
+}
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dist = join(root, 'web', 'dist');
