@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>md2word — AI Markdown → Word</title>
+<script type="importmap">
+{
+  "imports": {
+    "mermaid": "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs"
+  }
+}
+</script>
+<link rel="stylesheet" href="assets/katex.min.css"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">md<b>2</b>word<span class="tag">independent</span></div>
+    <div class="group">
+      <div class="gtitle">转换</div>
+      <button id="btn-copy" class="primary" title="Ctrl+Shift+C">复制为 Word</button>
+      <button id="btn-export" title="Ctrl+Shift+S">导出 .docx</button>
+      <button id="btn-html">导出 HTML</button>
+    </div>
+    <div class="group">
+      <div class="gtitle">样式预设</div>
+      <select id="style-preset">
+        <option value="zh" selected>中文论文（宋体/三线表）</option>
+        <option value="en">English Academic</option>
+        <option value="default">Word 默认</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="opt-center-h1"/> 一级标题居中</label>
+    </div>
+    <div class="group">
+      <div class="gtitle">示例</div>
+      <button id="btn-demo" class="ghost">载入演示文档</button>
+      <button id="btn-mermaid" class="ghost">渲染 Mermaid</button>
+    </div>
+    <div id="status">
+      <div id="stat-lines">0 行</div>
+      <div id="stat-words">0 字</div>
+      <div id="stat-warn" title="转换诊断">—</div>
+    </div>
+    <div class="foot">行为规格源：WordMarker v2.4.4 逆向分析<br/>实现：独立 clean-room</div>
+  </aside>
+  <main id="main">
+    <section id="editor">
+      <textarea id="src" spellcheck="false" placeholder="粘贴 AI 输出的 Markdown…&#10;&#10;支持 $…$、$$…$$、\\(…\\)、化学式 \\ce{}、矩阵、GFM/HTML 表格、脚注、代码高亮、Mermaid"></textarea>
+    </section>
+    <div id="divider"></div>
+    <section id="preview"><div id="pv-body"></div></section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

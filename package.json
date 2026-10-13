@@ -1,0 +1,48 @@
+{
+  "name": "md2word",
+  "version": "1.0.0",
+  "description": "AI Markdown → Word (.docx) converter — independent reimplementation (behavior-compatible with observed spec)",
+  "type": "module",
+  "main": "lib/index.mjs",
+  "bin": {
+    "md2word": "cli/md2word.mjs"
+  },
+  "scripts": {
+    "build:web": "node build.mjs",
+    "demo": "node cli/md2word.mjs samples/ai-demo.md -o samples/ai-demo.docx"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
+    "docx": "^9.5.1",
+    "highlight.js": "^11.11.1",
+    "jszip": "^3.10.2",
+    "katex": "^0.16.22",
+    "markdown-it": "^14.1.0",
+    "mathml2omml": "^0.5.0",
+    "parse5": "^8.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weiyinerzui/md2word-core.git"
+  },
+  "keywords": [
+    "markdown",
+    "docx",
+    "word",
+    "math",
+    "latex",
+    "katex",
+    "converter",
+    "ai"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
+}
