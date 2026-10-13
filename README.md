@@ -28,6 +28,17 @@
 | 快捷键 | Ctrl+Shift+C / Ctrl+Shift+S | 同 | ✓ |
 | 三栏布局 | sidebar+editor+preview+statusBar | 同构外壳 | ✓ 截图存证 |
 
+## 运行形态（外链图策略）
+
+| 形态 | 命令 | 外链图（如 telegraph/pages.dev 图床） | Mermaid |
+|---|---|---|---|
+| **本地全功能**（推荐） | `npm start` → http://127.0.0.1:5173 | ✅ 直嵌 .docx（内置同源代理 `/img?url=`，绕 CORS；>1080px/1.5MB 自动重采样） | ✅ 渲染进文档 |
+| 纯静态 | `python3 -m http.server 5173 -d web/dist` | ⚠ 降级为占位框 + 具体原因（404/403/CORS/格式） | ✅（mermaid 已打包，离线可用） |
+| CLI | `node cli/md2word.mjs x.md` | ✅ Node 无 CORS 概念（源站可达则直嵌） | ⚠ 无画布时保留代码块 + 提示 |
+
+- 外链图一旦**源站删除**（HTTP 404），任何工具都无法再嵌入——导出时会给出占位框与准确原因，不再无声丢失。
+- `npm start` 同样静态托管 dist，代理仅处理显式的 `/img?url=` 请求；含 SSRF 防护（拦截内网/元数据地址）。
+
 ## 快速开始
 
 ```bash

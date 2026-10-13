@@ -29,6 +29,20 @@ function mkToast() {
 }
 
 // ── 实时预览（防抖 160ms）────────────────
+// 浏览器端取图：直连（CORS 友好源）→ 同源代理回退（npm start 提供 /img）
+function webFetchImage(u) {
+  return fetch(u, { mode: 'cors' }).catch(async (directErr) => {
+    // 直连被 CORS 拒 → 尝试同源代理（npm start 提供 /img）。
+    // 注意：代理**有响应即透传**（哪怕 404/403）——由 loadImageAsset 按状态码
+    // 归类真实原因；仅代理本身不可达时才透出原始 CORS 错误。
+    try {
+      const pr = await fetch(`/img?url=${encodeURIComponent(u)}`);
+      return pr;
+    } catch { /* 代理也不可用（纯静态部署） */ }
+    throw directErr;
+  });
+}
+
 let timer = 0;
 srcEl.addEventListener('input', () => {
   clearTimeout(timer);
@@ -88,7 +102,7 @@ async function copyAsWord() {
   const md = srcEl.value;
   if (!md.trim()) return toast.show('编辑器为空', true);
   const ir = markdownToIr(preprocessMarkdown(md));
-  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value });
+  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value, mermaidPngs: mermaidMap() });
   const plain = clip.plain || md;
   try {
     if (navigator.clipboard?.write) {
@@ -101,6 +115,7 @@ async function copyAsWord() {
     } else {
       legacyCopy(clip.html);
     }
+    surfaceWarnings(clip.warnings, 'clipboard');
     const lost = clip.warnings.length;
     toast.show(lost ? `已复制（${lost} 处降级）` : '已复制，粘贴到 Word 试试 ✓');
   } catch (e) {
@@ -135,18 +150,19 @@ async function exportDocx() {
   const { buffer, warnings } = await exportMarkdownToDocx(md, {
     style: styleSel.value,
     title: guessTitle(md),
-    fetchFn: (u) => fetch(u),
+    fetchFn: webFetchImage,
     readFile: null,
   });
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   download(blob, `${guessTitle(md)}.docx`);
-  toast.show(warnings.length ? `已导出（${warnings.length} 处降级，见状态栏）` : '已导出 ✓ 公式可直接在 Word 中编辑');
+  surfaceWarnings(warnings, 'docx');
+  toast.show(warnings.length ? `已导出（${warnings.length} 处降级，见状态栏悬停）` : '已导出 ✓ 公式可直接在 Word 中编辑');
 }
 
 async function exportHtml() {
   const md = srcEl.value;
   const ir = markdownToIr(preprocessMarkdown(md));
-  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value });
+  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value, mermaidPngs: mermaidMap() });
   const doc = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>${guessTitle(md)}</title></head>\n<body style="background:#fff">\n${clip.html}\n</body></html>`;
   download(new Blob([doc], { type: 'text/html' }), `${guessTitle(md)}.html`);
   toast.show('HTML 已导出（可直接粘贴进邮件/在线编辑器）');
@@ -163,6 +179,12 @@ function download(blob, name) {
 function guessTitle(md) {
   const h = /^#\s+(.+)$/m.exec(md);
   return (h ? h[1] : 'md2word').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'md2word';
+}
+
+function mermaidMap() {
+  const m = {};
+  for (const [k, v] of state.mermaidPngs) m[fnv(k)] = v;
+  return m;
 }
 
 function fnv(s) {
@@ -208,6 +230,18 @@ $('#btn-mermaid').addEventListener('click', async () => {
   });
   div.addEventListener('pointerup', () => (dragging = false));
 })();
+
+// 资产级警告浮出到状态栏（解析级警告只有解析器知道；图片/图表成败只有导出时才知道）
+function surfaceWarnings(list, scope) {
+  if (!list?.length) return;
+  const el = $('#stat-warn');
+  const shown = el.title && el.title.startsWith('[') ? el.title.split('\n') : [];
+  const merged = shown.concat(list.map((w) => `[${scope}] ${w.code || 'warning'}: ${w.message}`));
+  el.textContent = `⚠ 转换降级 ${merged.length} 处`;
+  el.className = 'bad';
+  el.title = merged.join('\n');
+}
+
 
 // 快捷键（对齐原版：Ctrl+Shift+C 复制 / Ctrl+Shift+S 导出）
 addEventListener('keydown', (e) => {

@@ -73,3 +73,24 @@
 
 - 逆向产物仅用于互操作性研究；未复制任何源码/资源/二进制到本仓库。
 - 复刻物按“行为规格”独立表达；开源依赖全部在 README 署名（mathml2omml LGPL-3.0 链接式使用）。
+
+## 修复记录 v1.1（用户实测反馈）
+
+### 故障 1：Mermaid 不渲染（预览 failed / DOCX 回退代码块）
+两处独立缺陷，均已修复并有浏览器级复现证据：
+1. **渲染 id 含冒号**：`rasterizeMermaid` 用缓存 key（`fnv:s2`）当元素 id，mermaid 内部 `querySelector('#mmd-x:s2')` 抛 "not a valid selector"。→ id 清洗为 `[a-zA-Z0-9_-]`。
+2. **Tainted canvas**：Chromium 对含 `<foreignObject>` 的 <img>SVG 判污染，`toDataURL` 抛 "Tainted canvases may not be exported"。mermaid 的 html 标签/边标签就是 foreignObject。→ 渲染后 `deForeignSvg` 将其原地替换为等位 `<text>`（多行 → tspan）；`flowchart.htmlLabels:false` 作前置减量。浏览器复现：替换前 TAINT，替换后 CLEAN、PNG 13KB 真产出。
+
+### 故障 2：外链图导出丢失（用户样例 URL）
+- 源站实况（2025-10 实测）：该 URL 曾返回 200/4.4MB JPEG，**现已 404**（第三方图床内容不可复活——任何工具都一样，非本项目缺陷）。
+- 修复链（B1+B3，用户已确认）：
+  - **B1**：figure 失败不再静默消失 → 文档内可见占位图框（alt+URL+原因）；资产级警告（imageUnavailable/imageResized/mermaidRenderFailed）浮出到状态栏 + 导出 toast；`loadImageAsset` 按 fetch 结果细分类（cors / not-found / http-403 / server / unsupported / no-fetcher），每个码有人话文案。
+  - **B3**：`web/server.mjs`（约 100 行）：静态托管 + `/img?url=` 同源代理；上游状态码**透传**（404→404，浏览器端据此显示"远端 404"而非笼统跨域）；SSRF 防护拦截 localhost/内网段/元数据地址（实测 400）。
+  - web 端取图顺序：直连（CORS 友好源）→ 代理回退（有响应即透传，含 404/403）→ 都失败才按 CORS 报错。
+  - **决策③（重编码默认开）**：浏览器路径 canvas 重采样（>1080px 或 >1.5MB 触发，JPEG 0.85）。实测 2000×1400/322KB → 1080×756/151KB；4.4MB 原图 → 118KB。CLI 无 canvas，保持原字节。
+- 验证矩阵（Playwright 真实点击导出）：代理模式 docx 含该图 drawing + word/media jpeg + URL 不落文本层；静态/CLI 模式落占位框 + "远端 404"准确措辞。
+- 附带修复：`exportDocx` 中 `mermaidPngs` 死代码接通（DOCX 走内核栅格化，剪贴板/HTML 模式注入 PNG map）。
+
+### v1.1 已知限制（更新）
+- 纯静态部署下外链图永远无法直嵌（浏览器安全模型，无解）；占位框+原因+可复制 URL 是诚实降级。
+- CLI 的 mermaid 仍为代码块保留（Node 无画布）；可在有浏览器环境 `npm start` 导出。

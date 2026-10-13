@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build:web": "node build.mjs",
-    "demo": "node cli/md2word.mjs samples/ai-demo.md -o samples/ai-demo.docx"
+    "demo": "node cli/md2word.mjs samples/ai-demo.md -o samples/ai-demo.docx",
+    "start": "node web/server.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.12",
@@ -19,6 +20,7 @@
     "katex": "^0.16.22",
     "markdown-it": "^14.1.0",
     "mathml2omml": "^0.5.0",
+    "mermaid": "^11.17.2",
     "parse5": "^8.0.1"
   },
   "devDependencies": {

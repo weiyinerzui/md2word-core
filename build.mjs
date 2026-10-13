@@ -1,7 +1,7 @@
 // ============================================================
 // md2word — web 构建脚本
-//   node build.mjs          → web/dist（可直接 http 服务打开）
-// 产出：app.js(ESM, mermaid 外置) + katex css/fonts + 样式 + 示例
+//   node build.mjs          → web/dist（静态可开；外链图直嵌导出需 npm start）
+// 产出：app.js(mermaid 已打包) + katex css/fonts + 样式 + 示例 + server.mjs
 // ============================================================
 import { cpSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -29,7 +29,7 @@ const dist = join(root, 'web', 'dist');
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
-// 1) 应用包
+// 1) 应用包（mermaid 一并打包：离线可用、免 CDN）
 await build({
   entryPoints: [join(root, 'web', 'app.mjs')],
   bundle: true,
@@ -38,7 +38,6 @@ await build({
   outfile: join(dist, 'app.js'),
   minify: true,
   sourcemap: false,
-  external: ['mermaid'],
   legalComments: 'none',
   logLevel: 'info',
 });
@@ -58,5 +57,10 @@ if (existsSync(join(root, 'web', 'favicon.svg'))) cpSync(join(root, 'web', 'favi
 const html = readFileSync(join(dist, 'index.html'), 'utf-8');
 writeFileSync(join(dist, 'index.html'), html.replace('<script src="app.js">', '<script type="module" src="app.js">'));
 
-console.log(`✓ web/dist 构建完成 → ${dist}`);
-console.log('  预览：  python3 -m http.server 5173 -d web/dist   （浏览器打开 http://localhost:5173）');
+// 4) 静态托管 + 同源图片代理（复制 server.mjs 到 dist，dist 可独立分发）
+if (existsSync(join(root, 'web', 'server.mjs'))) cpSync(join(root, 'web', 'server.mjs'), join(dist, 'server.mjs'));
+
+console.log(`✓ web/dist 构建完成 → ${dist}（app.js ${(readFileSync(join(dist, 'app.js'), 'utf8').length / 1048576).toFixed(2)} MB）`);
+console.log('  预览：  npm start                       （推荐：带同源图片代理，外链图可直嵌）');
+console.log('  静态：  python3 -m http.server 5173 -d web/dist   （零依赖；外链图导出仅占位框提示）');
+
