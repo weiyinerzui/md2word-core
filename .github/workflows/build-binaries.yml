@@ -41,7 +41,8 @@ jobs:
           cache: npm
 
       - name: 安装依赖
-        run: npm ci
+        # 注：不用 npm ci —— npm 10.9.x 在部分 runner 上会触发 "Exit handler never called!" 崩溃
+        run: npm install --no-audit --no-fund
 
       - name: 构建 web/dist
         run: npm run build:web
