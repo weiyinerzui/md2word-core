@@ -10,7 +10,11 @@
   "scripts": {
     "build:web": "node build.mjs",
     "demo": "node cli/md2word.mjs samples/ai-demo.md -o samples/ai-demo.docx",
-    "start": "node web/server.mjs"
+    "start": "node web/server.mjs",
+    "build": "node build.mjs",
+    "build:bin": "node pack/build.mjs",
+    "build:bin:all": "node pack/build.mjs --all",
+    "start:open": "node web/server.mjs --open"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.12",
@@ -24,7 +28,8 @@
     "parse5": "^8.0.1"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6"
   },
   "allowScripts": {
     "esbuild@0.25.12": true

@@ -28,6 +28,16 @@
 | 快捷键 | Ctrl+Shift+C / Ctrl+Shift+S | 同 | ✓ |
 | 三栏布局 | sidebar+editor+preview+statusBar | 同构外壳 | ✓ 截图存证 |
 
+## 使用方式（三种）
+
+| 方式 | 适合 | 命令 / 操作 |
+|---|---|---|
+| **单文件，双击即用** | 普通用户 | 下载 `md2word-win-x64.exe` → 双击 → 浏览器打开完整界面 |
+| 单文件，命令行 | 批处理 | `md2word 输入.md -o 输出.docx [--style zh\|en\|default]` |
+| 源码运行 | 开发者 | `npm install` → `npm start` |
+
+打包细节见 [PACKAGING.md](./PACKAGING.md)。单文件版内置图片代理，**外链网图可直接嵌入 .docx**。
+
 ## 运行形态（外链图策略）
 
 | 形态 | 命令 | 外链图（如 telegraph/pages.dev 图床） | Mermaid |

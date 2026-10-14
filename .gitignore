@@ -3,3 +3,5 @@ web/dist/
 *.docx
 *.log
 .DS_Store
+dist-bin/
+.pack-tmp/

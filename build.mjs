@@ -25,7 +25,8 @@ try {
 }
 
 const root = dirname(fileURLToPath(import.meta.url));
-const dist = join(root, 'web', 'dist');
+const ONLINE = process.argv.includes('--online');   // 在线体验版：纯静态，不含服务端
+const dist = ONLINE ? join(root, 'web', 'dist-online') : join(root, 'web', 'dist');
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
@@ -58,9 +59,26 @@ const html = readFileSync(join(dist, 'index.html'), 'utf-8');
 writeFileSync(join(dist, 'index.html'), html.replace('<script src="app.js">', '<script type="module" src="app.js">'));
 
 // 4) 静态托管 + 同源图片代理（复制 server.mjs 到 dist，dist 可独立分发）
-if (existsSync(join(root, 'web', 'server.mjs'))) cpSync(join(root, 'web', 'server.mjs'), join(dist, 'server.mjs'));
+if (!ONLINE && existsSync(join(root, 'web', 'server.mjs'))) cpSync(join(root, 'web', 'server.mjs'), join(dist, 'server.mjs'));
 
-console.log(`✓ web/dist 构建完成 → ${dist}（app.js ${(readFileSync(join(dist, 'app.js'), 'utf8').length / 1048576).toFixed(2)} MB）`);
-console.log('  预览：  npm start                       （推荐：带同源图片代理，外链图可直嵌）');
-console.log('  静态：  python3 -m http.server 5173 -d web/dist   （零依赖；外链图导出仅占位框提示）');
+// 在线体验版：注入顶部提示（纯静态无图片代理 + 引导下载本地版）
+if (ONLINE) {
+  const banner = `<div style="position:fixed;bottom:12px;right:12px;z-index:99;max-width:320px;background:#fff;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);padding:10px 12px;font:12px/1.6 system-ui,-apple-system,'Microsoft YaHei',sans-serif;color:#24292f">
+  <b>在线体验版</b><br/>
+  公式 / Mermaid / 本地图片均可导出；<br/>
+  <span style="color:#bf3989">外链网图</span>受浏览器跨域限制，在线版可能无法直嵌 —— 需要完整功能请下载单文件版（内置图片代理）。
+  <div style="margin-top:6px"><a href="https://github.com/weiyinerzui/md2word-core/releases" style="color:#0969da">↓ 下载桌面版</a></div>
+</div>`;
+  const ih = readFileSync(join(dist, 'index.html'), 'utf-8');
+  writeFileSync(join(dist, 'index.html'), ih.replace('</body>', banner + '\n</body>'));
+}
+
+if (ONLINE) {
+  console.log(`✓ 在线体验版构建完成 → ${dist}`);
+  console.log('  部署：  npx -y edgeone makers deploy --anonymous web/dist-online');
+} else {
+  console.log(`✓ web/dist 构建完成 → ${dist}（app.js ${(readFileSync(join(dist, 'app.js'), 'utf8').length / 1048576).toFixed(2)} MB）`);
+  console.log('  预览：  npm start                       （推荐：带同源图片代理，外链图可直嵌）');
+  console.log('  静态：  python3 -m http.server 5173 -d web/dist   （零依赖；外链图导出仅占位框提示）');
+}
 

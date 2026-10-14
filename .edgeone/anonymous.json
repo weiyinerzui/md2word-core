@@ -1,0 +1,15 @@
+{
+  "site": "china",
+  "token": "274ebd56db729cb21f41cff3c2c2e7d4",
+  "tokenExpired": "1791945998",
+  "projectName": "md2word-qhklj15k",
+  "targetPath": "274ebd56db729cb21f41cff3c2c2e7d4/md2word-qhklj15k/1791942399204",
+  "bucket": "eop-trans-sh-prod-1256816668",
+  "region": "ap-shanghai",
+  "cosExpiredTime": 1791944199,
+  "cosExpiration": "2026-10-14T02:16:39Z",
+  "createdAt": "2026-10-14T01:46:39.408Z",
+  "projectId": "makers-ixhe0xabokxz",
+  "deploymentId": "dp1cdnuylivr",
+  "siteUrl": "https://md2word-qhklj15k-73cnrh12.edgeone.cool?eo_token=c0d805fdf70f537a04550a5ca88df83e&eo_time=1791942425"
+}
