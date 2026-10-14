@@ -40,9 +40,11 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: 升级 npm（规避 runner 自带 npm 的 "Exit handler never called!" 崩溃）
+        run: npm install -g npm@11
+
       - name: 安装依赖
-        # 注：不用 npm ci —— npm 10.9.x 在部分 runner 上会触发 "Exit handler never called!" 崩溃
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --loglevel=error
 
       - name: 构建 web/dist
         run: npm run build:web
