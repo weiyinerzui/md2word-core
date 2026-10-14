@@ -94,3 +94,33 @@
 ### v1.1 已知限制（更新）
 - 纯静态部署下外链图永远无法直嵌（浏览器安全模型，无解）；占位框+原因+可复制 URL 是诚实降级。
 - CLI 的 mermaid 仍为代码块保留（Node 无画布）；可在有浏览器环境 `npm start` 导出。
+
+## 修复记录 v1.2（用户二轮实测反馈）
+
+### 故障 3：Mermaid 在 web 预览 / 导出 HTML / 剪贴板全坏（DOCX 却正常）
+根因：`rasterizeMermaid()` 返回**对象** `{ dataUri, width, height, png }`，但 `web/app.mjs` 三处消费点把它当**字符串**：
+- `renderMermaidQueue`：`src: png` → 预览 img.src = `[object Object]`（坏图）；
+- `state.mermaidPngs.set(source, png)` → 剪贴板/HTML 取到对象；
+- 传给 emitter-html 的 mermaidPngs 也是对象 → 导出 HTML 里 `<img src="[object Object]">`。
+DOCX 不受影响——它走 `lib/` 内核另一条栅格化路径（消费 `.png` 字节），故出现"docx 正常、html/预览坏"的错位。
+**修复**：三处统一取 `png.dataUri`。
+
+（用户另反馈"web 端一直显示加载图表…"。经复现，当前 v1.1 构建下预览 `data-state=done` 正常；该症状属**本地未更新构建**——修复前的 id 冒号 bug 会让它停在 pending。已随本版重新构建。）
+
+### 故障 4：在线图片在导出 HTML 中丢失
+根因：`lib/emitter-html.mjs` 的 `imageTag()` **只处理 `data:` 开头**的图，遇到 `http(s)` 直接返回 `null` → `figure` 分支落到 `out += '<p>alt</p>'`，图只剩一行 alt 文字。DOCX 走 `lib/assets.mjs`（会 fetch/代理）故正常。
+**修复（用户选 a+b 混合）**：
+- **a**：取不到字节时**保留外链** `<img src="原URL" width height>`（浏览器打开 .html 仍可见），并记录 `imageExternalLink` 告警；
+- **b**：能取到字节时（直连或同源代理）经 `reencodeImage` 后转 **base64 data URI 内嵌** → 导出的 .html 完全自包含、离线可看。
+- `imageTag(src, alt)` 改为 `(src, alt)`，内部按 data / http(s) / 其他 三路处理，结果进 `imageCache`；新增 `bytesToBase64`（Buffer / btoa 双兼容）；`buildWordClipboardHtml` 增加 `options.fetchFn`（web 传 `webFetchImage` 代理回退版，CLI 传 node fetch）。
+- `exportHtml` 补 `surfaceWarnings`（此前 HTML 导出的降级提示不上状态栏）。
+
+### v1.2 验证矩阵（Playwright 真实交互）
+| 检查 | 代理模式(5173) | 纯静态(5175) | CLI --html |
+|---|---|---|---|
+| 预览 mermaid | `state=done` + `data:image/png` | 同 | n/a |
+| HTML mermaid | ✓ data URI（非 `[object Object]`） | ✓ | n/a |
+| HTML 在线图 | ✓ 内嵌 data URI（271KB 自包含） | ✓ 内嵌（源站带 ACAO） | ✓ 内嵌（193KB） |
+| HTML 无 ACAO 源 | — | ✓ 外链兜底 + 告警（不再 `<p>alt</p>`） | — |
+| DOCX 回归 | drawings=2、media 2 文件 | 同 | nary=6、sty-undefined=False |
+| 剪贴板 text/html | mermaid ✓ + 在线图 ✓ | 同 | n/a |

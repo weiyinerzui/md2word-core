@@ -70,7 +70,7 @@ if (args.html) {
   const { buildWordClipboardHtml } = await import('../lib/emitter-html.mjs');
   const { parseMarkdown } = await import('../lib/index.mjs');
   const ir = parseMarkdown(md);
-  const result = await buildWordClipboardHtml(ir, { style });
+  const result = await buildWordClipboardHtml(ir, { style, fetchFn: (u) => (globalThis.fetch ? fetch(u) : Promise.reject(new Error('no fetch'))) });
   warnings = result.warnings;
   writeFileSync(resolve(args.html), `<!DOCTYPE html>\n<meta charset="utf-8">\n${result.html}\n`, 'utf-8');
   if (!args.quiet) console.log(`✓ Word 剪贴板 HTML 写入 ${resolve(args.html)}`);

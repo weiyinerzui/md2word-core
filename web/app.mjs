@@ -64,12 +64,13 @@ async function renderMermaidQueue(queue) {
   for (const { id, source } of queue) {
     try {
       const png = await rasterizeMermaid(source, { scale: 2 });
+      const uri = png?.dataUri; // rasterizeMermaid 返回 {dataUri,width,height,png} —— 消费点须取 .dataUri
       const host = document.getElementById(id);
-      if (host && png) {
+      if (host && uri) {
         host.dataset.state = 'done';
         host.textContent = '';
-        host.appendChild(Object.assign(document.createElement('img'), { src: png, alt: 'Mermaid' }));
-        state.mermaidPngs.set(source, png);
+        host.appendChild(Object.assign(document.createElement('img'), { src: uri, alt: 'Mermaid' }));
+        state.mermaidPngs.set(source, uri);
         ok++;
       }
     } catch {
@@ -102,7 +103,7 @@ async function copyAsWord() {
   const md = srcEl.value;
   if (!md.trim()) return toast.show('编辑器为空', true);
   const ir = markdownToIr(preprocessMarkdown(md));
-  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value, mermaidPngs: mermaidMap() });
+  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value, mermaidPngs: mermaidMap(), fetchFn: webFetchImage });
   const plain = clip.plain || md;
   try {
     if (navigator.clipboard?.write) {
@@ -162,10 +163,11 @@ async function exportDocx() {
 async function exportHtml() {
   const md = srcEl.value;
   const ir = markdownToIr(preprocessMarkdown(md));
-  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value, mermaidPngs: mermaidMap() });
+  const clip = await buildWordClipboardHtml(ir, { style: styleSel.value, mermaidPngs: mermaidMap(), fetchFn: webFetchImage });
   const doc = `<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>${guessTitle(md)}</title></head>\n<body style="background:#fff">\n${clip.html}\n</body></html>`;
   download(new Blob([doc], { type: 'text/html' }), `${guessTitle(md)}.html`);
-  toast.show('HTML 已导出（可直接粘贴进邮件/在线编辑器）');
+  surfaceWarnings(clip.warnings, 'html');
+  toast.show(clip.warnings.length ? `HTML 已导出（${clip.warnings.length} 处降级，见状态栏悬停）` : 'HTML 已导出（可直接粘贴进邮件/在线编辑器）');
 }
 
 function download(blob, name) {
