@@ -115,6 +115,9 @@ async function fetchNodeBinary(t, spec) {
   const extracted = join(dir, top, 'bin', 'node');
   if (!existsSync(extracted)) throw new Error(`未找到 ${extracted}`);
   writeFileSync(cachedPath, readFileSync(extracted));
+  // writeFileSync 不保留可执行位 —— 此文件随后要被 execFileSync 执行（config node / 注入基底），
+  // 缺 +x 时直接 EACCES（linux/mac CI 曾在此失败）。
+  try { chmodSync(cachedPath, 0o755); } catch { /* win 平台无意义但无害 */ }
   return cachedPath;
 }
 
