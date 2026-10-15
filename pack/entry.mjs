@@ -69,7 +69,8 @@ async function startWeb() {
   const port = await listenOnFreePort(server, { startPort: 5173 });
   const url = `http://127.0.0.1:${port}`;
   process.stdout.write(`\n  md2word 已启动 →  ${url}\n  关闭此窗口即退出应用。\n\n`);
-  openBrowser(url);
+  const opened = await openBrowser(url);
+  if (!opened) process.stdout.write(`  （未能自动打开浏览器，请手动访问 ${url}）\n\n`);
 }
 
 (async () => {

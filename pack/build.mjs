@@ -34,6 +34,23 @@ const TARGETS = {
 
 const log = (...a) => console.log(...a);
 
+// Windows 本机交叉解包（构建 linux/mac 目标）时的 tar 选择：
+//  ① git-bash GNU tar（Git\usr\bin\tar.exe）+ --force-local —— 首选：
+//     未加 --force-local 时 GNU tar 会把盘符路径 E:\… 误当远程主机（"Cannot connect to E"）。
+//  ② System32 bsdtar 兜底（注意它解 .tar.xz 需外部 xz 过滤器，个别环境会卡死；
+//     且无符号链接权限时报错但文件已解出 —— 调用方对非 0 退出码做了容错）。
+// Linux/macOS 宿主机直接用系统 tar。
+function tarCommand() {
+  if (process.platform === 'win32') {
+    const gnu = join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'usr', 'bin', 'tar.exe');
+    if (existsSync(gnu)) return { cmd: gnu, args: ['--force-local'] };
+    const sys = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+    if (existsSync(sys)) return { cmd: sys, args: [] };
+    return { cmd: 'tar', args: ['--force-local'] }; // git-bash 的 GNU tar 在 PATH 里
+  }
+  return { cmd: 'tar', args: [] };
+}
+
 function listFiles(dir, prefix = '') {
   const out = [];
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -54,14 +71,25 @@ function currentTarget() {
   return `${p}-${process.arch}`;
 }
 
+async function downloadWithRetry(url, tries = 3) {
+  for (let i = 1; i <= tries; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(240_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      if (i === tries) throw new Error(`下载失败（已试 ${tries} 次）${url}：${(e && e.message) || e}`);
+      log(`      第 ${i} 次下载失败（${(e && e.message) || e}），重试 …`);
+    }
+  }
+}
+
 async function fetchNodeBinary(t, spec) {
   const binName = spec.plat + (t === 'win-x64' ? '.exe' : '');
   const cachedPath = join(TMP, binName);
   if (existsSync(cachedPath)) { log(`      使用缓存 ${binName}`); return cachedPath; }
   log(`      下载 ${spec.url}`);
-  const res = await fetch(spec.url);
-  if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}: ${spec.url}`);
-  const raw = Buffer.from(await res.arrayBuffer());
+  const raw = await downloadWithRetry(spec.url);
 
   if (!spec.tar) {
     writeFileSync(cachedPath, raw);
@@ -70,10 +98,17 @@ async function fetchNodeBinary(t, spec) {
   // tar.xz / tar.gz → 取出 bin/node
   const archive = join(TMP, `node-${spec.plat}` + (spec.url.endsWith('.xz') ? '.tar.xz' : '.tar.gz'));
   writeFileSync(archive, raw);
-  // 用系统 tar（Linux/macOS/Windows10+ 均自带；Windows 交叉构建 Linux 时也可用）
   const dir = join(TMP, `x-${spec.plat}`);
   mkdirSync(dir, { recursive: true });
-  execFileSync('tar', ['-xf', archive, '-C', dir], { stdio: 'ignore' });
+  try {
+    const t = tarCommand();
+    execFileSync(t.cmd, [...t.args, '-x', '-f', archive, '-C', dir], { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    // 非零退出码不一定致命（如 bsdtar 无符号链接权限）—— 继续靠下面的
+    // existsSync(bin/node) 判定；真正缺文件时会带原因抛出。
+    log(`      tar 非零退出（${String((e.stderr || e.message) || e).trim().slice(0, 120)}）—— 检查目标文件 …`);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  }
   // 解出的顶层目录名如 node-v22.11.0-linux-x64
   const top = readdirSync(dir).find((n) => n.startsWith('node-'));
   if (!top) throw new Error('tar 解包后未找到 node-* 目录');
@@ -83,17 +118,14 @@ async function fetchNodeBinary(t, spec) {
   return cachedPath;
 }
 
-async function resolvePostject() {
-  const local = join(ROOT, 'node_modules', '.bin', process.platform === 'win32' ? 'postject.cmd' : 'postject');
+function resolvePostject() {
+  // 直接返回 cli.js 路径，由 process.execPath 运行。
+  // 不要用 node_modules/.bin/postject.cmd：Windows 上 execFileSync 启动
+  // .cmd/.bat 会抛 EINVAL（Node ≥ 18.20/20.12/22 的安全策略，无法绕过）。
+  // v1.1.0 的 Windows 产物正是此缺陷：错误被吞掉，发布了一个未注入的原版 node.exe。
+  const local = join(ROOT, 'node_modules', 'postject', 'dist', 'cli.js');
   if (existsSync(local)) return local;
   throw new Error('缺少 postject —— 请执行: npm install -D postject');
-}
-
-function countOccurrences(buf, needle) {
-  const n = Buffer.from(needle);
-  let c = 0, i = 0;
-  while ((i = buf.indexOf(n, i)) !== -1) { c++; i += n.length; }
-  return c;
 }
 
 async function main() {
@@ -151,12 +183,20 @@ async function main() {
     useSnapshot: false,
     assets,
   }, null, 2));
-  execFileSync(process.execPath, ['--experimental-sea-config', seaConfigPath], { stdio: 'inherit' });
+  // 生成 blob 的 Node 必须与基底二进制同版本 —— SEA blob 的序列化格式跨版本不兼容，
+  // 版本不一致时目标运行期直接崩溃【segfault，无任何输出】。
+  // v1.1.0 的 linux/mac 产物即是此缺陷：CI 的 setup-node（22.x 最新）与基底 22.11.0 不一致。
+  // 故这里不用 process.execPath（宿主机任意版本），而是下载同版本 Node 专用于 config 步骤。
+  const hostTarget = currentTarget();
+  if (!TARGETS[hostTarget]) throw new Error(`宿主平台 ${hostTarget} 无官方 Node 发行物映射，无法生成同版本 blob`);
+  const hostNode = await fetchNodeBinary(hostTarget, TARGETS[hostTarget]);
+  log(`      config node: ${NODE_VER}（与基底同版本）`);
+  execFileSync(hostNode, ['--experimental-sea-config', seaConfigPath], { stdio: 'inherit' });
   const blobPath = join(TMP, 'sea-prep.blob');
   log(`      blob ${(statSync(blobPath).size / 1024 / 1024).toFixed(2)} MB（含 ${Object.keys(assets).length} 个资源）`);
 
   // 3+4) 注入各平台
-  const postject = await resolvePostject();
+  const postjectCli = resolvePostject();
   mkdirSync(OUT, { recursive: true });
   const results = [];
   for (const t of targets) {
@@ -168,10 +208,16 @@ async function main() {
     writeFileSync(outPath, readFileSync(basePath));
     if (t !== 'win-x64') chmodSync(outPath, 0o755);
     log(`[4/4] ${t}: postject 注入 …`);
+    const postjectArgs = [postjectCli, outPath, 'NODE_SEA_BLOB', blobPath, '--sentinel-fuse', SENTINEL, '--overwrite'];
+    // macOS：Node 运行时只在 NODE_SEA 段里找 blob（node_sea.cc: macho_segment_name = "NODE_SEA"），
+    // 不传该参数会注入到默认 __POSTJECT 段 → 运行时找不到 blob 而崩溃。
+    if (t.startsWith('mac-')) postjectArgs.push('--macho-segment-name', 'NODE_SEA');
     try {
-      execFileSync(postject, [outPath, 'NODE_SEA_BLOB', blobPath, '--sentinel-fuse', SENTINEL, '--overwrite'], { stdio: ['ignore', 'ignore', 'pipe'] });
+      execFileSync(process.execPath, postjectArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
     } catch (e) {
-      log(`      ⚠ postject 输出: ${String(e.stderr || e.message).slice(0, 240)}`);
+      // 注入失败即失败 —— 绝不能让未注入的原版 node.exe 混进产物（v1.1.0 教训）
+      console.error(`✗ postject 注入失败（${t}）：${String((e.stderr || e.message) || e).slice(0, 400)}`);
+      process.exit(1);
     }
     const size = (statSync(outPath).size / 1024 / 1024).toFixed(1);
     const sha = createHash('sha256').update(readFileSync(outPath)).digest('hex');
@@ -179,20 +225,35 @@ async function main() {
     log(`      ✓ ${spec.out}  ${size} MB  sha256:${sha.slice(0, 16)}…`);
   }
 
-  // 校验：实跑产物（仅当前平台可执行；跨平台仅静态检查 blob 段存在）
+  // 校验（任一失败即中止打包，绝不发布无效产物）：
+  //   ① 真注入：产物必须包含 blob 的 64 字节唯一前缀。
+  //      不能用 buf.includes('NODE_SEA_BLOB') —— 原版 node.exe 本身就含此字符串，会漏检
+  //      （v1.1.0 Windows 产物为纯 node.exe，该检查照样通过）。
+  //   ② 实跑（仅当前平台）：--help 必须输出 md2word 的帮助文本；
+  //      未注入时它输出的是 node 自己的帮助（或双击进入 REPL），据此可直接判定。
   log('\n校验:');
+  const blobHead = readFileSync(blobPath).subarray(0, 64);
+  let failed = false;
   for (const r of results) {
     const buf = readFileSync(join(OUT, r.out));
-    const hasBlob = buf.includes(Buffer.from('NODE_SEA_BLOB'));
+    const injected = buf.includes(blobHead);
     const samePlat = currentTarget() === r.t;
     let ran = '（异平台，跳过实跑）';
+    let ranOk = true;
     if (samePlat) {
       try {
         const v = execFileSync(join(OUT, r.out), ['--help'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-        ran = /md2word — AI Markdown/.test(v) ? '实跑 ✓' : '实跑异常';
-      } catch { ran = '实跑失败 ✗'; }
+        ranOk = /md2word — AI Markdown/.test(v);
+        ran = ranOk ? '实跑 ✓' : '实跑异常（输出的是 node 帮助，未注入）';
+      } catch { ranOk = false; ran = '实跑失败 ✗'; }
     }
-    log(`  ${r.out}: SEA 段 ${hasBlob ? '✓' : '✗'} | ${ran}`);
+    const ok = injected && ranOk;
+    if (!ok) failed = true;
+    log(`  ${r.out}: 注入 ${injected ? '✓' : '✗（疑似原版 node，未注入）'} | ${ran}`);
+  }
+  if (failed) {
+    console.error('\n✗ 校验未通过 —— 存在无效产物，已中止（不写入 SHA256SUMS）');
+    process.exit(1);
   }
 
   writeFileSync(join(OUT, 'SHA256SUMS.txt'), results.map((r) => `${r.sha}  ${r.out}`).join('\n') + '\n');

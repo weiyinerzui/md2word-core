@@ -6,3 +6,4 @@ web/dist/
 dist-bin/
 .pack-tmp/
 .edgeone/
+web/*.zip

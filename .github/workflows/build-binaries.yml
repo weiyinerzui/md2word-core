@@ -43,7 +43,7 @@ jobs:
       - name: 升级 npm（规避 runner 自带 npm 的 "Exit handler never called!" 崩溃）
         run: npm install -g npm@11
 
-      - name: 安装依赖
+      - name: 安装依赖（含 postject —— v1.1.0 曾因依赖未装导致注入静默失败）
         run: npm install --no-audit --no-fund --loglevel=error
 
       - name: 构建 web/dist
@@ -59,17 +59,70 @@ jobs:
           path: dist-bin/${{ matrix.artifact }}
           if-no-files-found: error
 
-      # 原生 runner 实跑冒烟（当前平台产物必然可执行）
-      - name: 冒烟测试（Linux/macOS）
+      # ===== 冒烟 1：CLI 模式（--help 必须输出 md2word 的帮助文本）=====
+      # v1.1.0 的 Windows 产物实为未注入的原版 node.exe：--help 输出的是 node 自己的帮助，
+      # 当时此步未校验内容（只 head -3），假阳性放行。现强制断言内容。
+      - name: 冒烟测试 — CLI（Linux/macOS）
         if: runner.os != 'Windows'
         run: |
           chmod +x dist-bin/${{ matrix.artifact }}
-          ./dist-bin/${{ matrix.artifact }} --help | head -3 || echo "⚠ 冒烟跳过（如跨架构无模拟器）"
-      - name: 冒烟测试（Windows）
+          out=$(./dist-bin/${{ matrix.artifact }} --help 2>&1) || true
+          echo "$out" | head -3
+          echo "$out" | grep -q "md2word — AI Markdown" || { echo "✗ 冒烟失败：--help 未输出 md2word 帮助（产物疑似未注入/损坏）"; exit 1; }
+
+      - name: 冒烟测试 — CLI（Windows）
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          & "dist-bin/${{ matrix.artifact }}" --help | Select-Object -First 3
+          $out = (& "dist-bin/${{ matrix.artifact }}" --help 2>&1) | Out-String
+          $out.Substring(0, [Math]::Min(80, $out.Length))
+          if ($out -notmatch "md2word — AI Markdown") { Write-Error "✗ 冒烟失败：--help 未输出 md2word 帮助（产物疑似未注入/损坏）"; exit 1 }
+
+      # ===== 冒烟 2：Web 模式（复现用户主诉：双击应打开本地 Web 端）=====
+      # 进程以无参启动 → 应在 127.0.0.1 起服务，/ 返回 md2word 页面，/app.js 返回打包 JS。
+      - name: 冒烟测试 — Web（Linux/macOS）
+        if: runner.os != 'Windows'
+        run: |
+          ./dist-bin/${{ matrix.artifact }} > web.log 2>&1 &
+          APP=$!
+          ok=""
+          for i in $(seq 1 25); do
+            for port in $(seq 5173 5192); do
+              if curl -sf -o page.html "http://127.0.0.1:$port/"; then ok=$port; break 2; fi
+            done
+            sleep 1
+          done
+          if [ -z "$ok" ]; then echo "✗ Web 冒烟失败：本地服务未起来"; cat web.log; kill $APP 2>/dev/null; exit 1; fi
+          echo "listening on :$ok"
+          grep -q "md2word" page.html || { echo "✗ 首页内容异常"; cat page.html; kill $APP; exit 1; }
+          curl -s -o app.js.bin -w "app.js -> %{http_code} %{size_download}B\n" "http://127.0.0.1:$ok/app.js"
+          [ -s app.js.bin ] || { echo "✗ app.js 为空"; kill $APP; exit 1; }
+          kill $APP 2>/dev/null || true
+
+      - name: 冒烟测试 — Web（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist-bin/${{ matrix.artifact }}" -PassThru `
+                -RedirectStandardOutput web.log -RedirectStandardError web.err -WindowStyle Hidden
+          $ok = $false; $port = 0
+          foreach ($i in 1..25) {
+            foreach ($pt in 5173..5192) {
+              try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:$pt/" -UseBasicParsing -TimeoutSec 3
+                if ($r.StatusCode -eq 200 -and $r.Content -match 'md2word') { $ok = $true; $port = $pt; break }
+              } catch {}
+            }
+            if ($ok) { break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ok) { Get-Content web.log, web.err; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; throw "✗ Web 冒烟失败：本地服务未起来" }
+          Write-Host "listening on :$port"
+          try {
+            $app = Invoke-WebRequest -Uri "http://127.0.0.1:$port/app.js" -UseBasicParsing -TimeoutSec 60
+            Write-Host ("app.js -> {0} {1}B" -f $app.StatusCode, $app.RawContentLength)
+            if ($app.StatusCode -ne 200 -or $app.RawContentLength -lt 1000000) { throw "app.js 异常" }
+          } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
 
   release:
     name: 发布 Release

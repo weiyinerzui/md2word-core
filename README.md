@@ -34,6 +34,7 @@
 |---|---|---|
 | **单文件，双击即用** | 普通用户 | 下载 `md2word-win-x64.exe` → 双击 → 浏览器打开完整界面 |
 | 单文件，命令行 | 批处理 | `md2word 输入.md -o 输出.docx [--style zh\|en\|default]` |
+| [在线体验版](https://md2word-core-5wqovb40-edptemkd.edgeone.cool) | 免下载 | 浏览器打开即用（外链网图受 CORS 限制，完整功能请用单文件版） |
 | 源码运行 | 开发者 | `npm install` → `npm start` |
 
 打包细节见 [PACKAGING.md](./PACKAGING.md)。单文件版内置图片代理，**外链网图可直接嵌入 .docx**。
