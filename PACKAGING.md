@@ -10,9 +10,9 @@
 | **命令行版** | 同一个文件（带参数） | `md2word 输入.md -o 输出.docx --style zh` |
 | **在线体验版** | EdgeOne Pages URL | 浏览器打开即用（纯静态；外链网图受 CORS 限制） |
 
-当前在线版地址（v1.1.1 重新部署，2026-10-15）：
-https://md2word-core-5wqovb40-edptemkd.edgeone.cool
-首次访问会 302 到带 token 的会话链接（匿名部署的防盗链机制，直接跟随重定向即可）。
+当前在线版（v1.1.2 起，2026-10-15 部署到账号内项目 md2word，Project ID makers-utpydevlvqkb）：
+https://md2word-sshintzc.edgeone.cool?eo_token=4d8aac11c6567c7668506782b335e8b5&eo_time=1792041876
+首次访问 302 建会话 Cookie（EdgeOne 的 Preview 鉴链机制，直接跟随重定向即可）。
 
 **同一个可执行文件，按"有无参数"自动分流**：无参数 → 本地 Web 应用；带参数 → CLI。
 
@@ -76,23 +76,30 @@ v1.1.0 的四个产物，其中三个是坏的，根源是打包链路里的四�
 
 ```bash
 node build.mjs --online        # 生成 web/dist-online（纯静态，无 server.mjs）
-npx -y edgeone makers deploy --anonymous web/dist-online
+npx -y edgeone@latest makers deploy web/dist-online -n md2word   # 登录态；未登录机器加 --anonymous（24h 内认领）
 ```
 
 - **纯静态**：不含本地图片代理，外链网图导出受浏览器 CORS 限制（会降级为占位框/外链）；
 - 页面右下角有引导横幅，提示需要完整功能请下载桌面版；
-- **匿名部署有期限**：EdgeOne 匿名部署默认约 24 小时后回收——v1.1.0 的在线链接
-  `md2word-dkbsoez8-gzyfrjyi` 已因此 404（也因当时的 claim token 误提交进 git 后又删除，无法再认领）。
-  **部署后务必立即认领**（命令与网页链接都在部署输出里，有效期约 24 小时），
-  例如 v1.1.1 的认领方式：
+- **首选：登录态部署到自己的项目（项目永久保留，无回收）**。本机 CLI 已登录：
 
 ```
-edgeone makers claim --sid 13ab5f675d0277701456b2a971e4ae66
-# 或浏览器打开（需登录腾讯云账号）：
-# https://console.cloud.tencent.com/edgeone/makers/claim?token=13ab5f675d0277701456b2a971e4ae66
+node build.mjs --online
+npx -y edgeone@latest makers deploy web/dist-online -n md2word
 ```
 
-认领后即变为长期项目，URL 稳定；后续更新只需重新 deploy 到同一 project。
+  部署输出给出带 `eo_token/eo_time` 的访问 URL。**URL 里的 token 是时效性的**，
+  出现 401 UNAUTHORIZED（Authentication Expired）时无需重新构建——去控制台项目页
+  点 Preview 拿新链接，或重跑上面的 deploy 命令一键出新链接。
+  控制台：https://console.cloud.tencent.com/edgeone/pages/project/makers-utpydevlvqkb
+
+- 匿名分支（未登录，`--anonymous`）：**24 小时内必须 `claim` 认领进账号**，
+  否则整个站点回收（404 NOT_FOUND / The site does not exist）。
+  v1.1.0 的 `md2word-dkbsoez8-gzyfrjyi` 即死于此：部署当天没认领 → 次日回收
+  （叠加上当时的 claim token 曾误提交进 git 又删除，可认领凭证也没了）。
+
+- 需要长期公开 URL（无 token，可写进 README）：控制台绑自定义域名
+  （域名管理 → Custom Domain，CNAME 接入，平台自动签发证书）。
 
 ## 五、用户下载后的注意事项
 
